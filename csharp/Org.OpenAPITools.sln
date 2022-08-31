@@ -1,7 +1,13 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
+<<<<<<< HEAD
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32714.290
 MinimumVisualStudioVersion = 10.0.40219.1
+=======
+# Visual Studio 2012
+VisualStudioVersion = 12.0.0.0
+MinimumVisualStudioVersion = 10.0.0.1
+>>>>>>> c6a2ef0f4ed8b37af91ad716c1b6c71b9269284c
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Org.OpenAPITools", "src\Org.OpenAPITools\Org.OpenAPITools.csproj", "{2BBB517E-0B0A-4BFF-85D6-1538AFEB92A6}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Org.OpenAPITools.Test", "src\Org.OpenAPITools.Test\Org.OpenAPITools.Test.csproj", "{19F1DEBC-DE5E-4517-8062-F000CD499087}"
