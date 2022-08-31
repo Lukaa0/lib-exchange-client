@@ -1,6 +1,6 @@
 ﻿namespace Org.OpenAPITools.Client;
 
-public enum Event
+public enum Channel
 {
 	//Anonymous
 	l2,

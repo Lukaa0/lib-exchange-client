@@ -13,19 +13,15 @@ namespace Org.OpenAPITools.Client;
 
 public class BlockchainSocket
 {
+	public List<Channel> SubscribedEvents;
+
 	/// <summary>
 	/// </summary>
 	/// <param name="configuration"></param>
 	public BlockchainSocket(Configuration configuration)
 	{
 		Configuration = configuration;
-		configuration.ApiKey = new Dictionary<string, string>
-		{
-			{
-				"API_SECRET",
-				"secret"
-			}
-		};
+		configuration.ApiKey = new Dictionary<string, string> { { "API_SECRET", "secret here" } };
 		var nativeSocket = new ClientWebSocket
 		{
 			Options = { KeepAliveInterval = TimeSpan.FromSeconds(5) }
@@ -35,19 +31,16 @@ public class BlockchainSocket
 		WebSocket = new WebsocketClient(new Uri(Configuration.WebSocketUrl), Factory);
 	}
 
-	public bool IsAuthenticated { get; set; }
 	private Configuration Configuration { get; }
 	private Func<ClientWebSocket> Factory { get; }
 	private WebsocketClient WebSocket { get; }
 
-	private bool CheckIfEventRequiresAuthentication(Event @event) =>
-		@event is Event.trading or Event.NewOrderSingle or Event.CancelOrderRequest
-			or Event.OrderMassCancelRequest or Event.OrderMassStatusRequest or Event.balances;
-
 	// ReSharper disable once TooManyArguments
 	// ReSharper disable once MethodTooLong
 	/// <summary>
-	///   Connects and subscribes to given events
+	///   Connects and subscribes to given channels, if all channels are anonymous, it will just subscribe without
+	///   authentication. If there's a mixture of anonymous and authenticated, it will authenticate first and then will
+	///   subscribe to all the channels passed in the function.
 	/// </summary>
 	/// <param name="events"></param>
 	/// <param name="symbol"></param>
@@ -59,16 +52,22 @@ public class BlockchainSocket
 	/// <param name="onTradeUpdate"></param>
 	/// <exception cref="InvalidOperationException"></exception>
 	/// TODO: Maybe its better to have separate functions for each events?
-	public async Task ConnectAndSubscribe(List<Event> events, Arguments arguments, Action<List<Bids>> onL2Message = null,
-		Action<List<Bids>> onL3Message = null, Action<Price> onPriceUpdate = null,
-		Action<List<SymbolStatus>> onSymbolUpdate = null, Action<Ticker> onTicketUpdate = null,
-		Action<Trade> onTradeUpdate = null)
+	public async Task ConnectAndSubscribe(List<Channel> events, Arguments arguments,
+		Action<List<Bids>> onL2Message = null, Action<List<Bids>> onL3Message = null,
+		Action<Price> onPriceUpdate = null, Action<List<SymbolStatus>> onSymbolUpdate = null,
+		Action<Ticker> onTicketUpdate = null, Action<Trade> onTradeUpdate = null,
+		Action<List<Balance>> onBalanceUpdate = null)
 	{
-		WebSocket.MessageReceived?.Subscribe(message =>
+		WebSocket.MessageReceived?.Subscribe(async message =>
 		{
 			var subscriptionMessage =
 				JsonConvert.DeserializeObject<SubscriptionMessage>(message.Text);
-			if (subscriptionMessage.Event == "subscribed")
+			if (subscriptionMessage.Channel == Channel.auth &&
+				subscriptionMessage.Event != "rejected")
+			{
+				await SubscribeToEvents(events, arguments);
+			}
+			else if (subscriptionMessage.Event == "subscribed")
 			{
 				//receipt
 			}
@@ -76,46 +75,46 @@ public class BlockchainSocket
 			{
 				switch (subscriptionMessage.Channel)
 				{
-				case Event.l2:
+				case Channel.l2:
 					onL2Message(DeserializeResponse<List<Bids>>(message.Text, "bids"));
 					break;
-				case Event.l3:
+				case Channel.l3:
 					onL3Message(DeserializeResponse<List<Bids>>(message.Text, "bids"));
 					break;
-				case Event.prices:
+				case Channel.prices:
 					var priceValues = JObject.Parse(message.Text)["price"].Select(token => (int)token).
 						ToArray();
 					onPriceUpdate(new Price(priceValues[0], priceValues[1], priceValues[2],
 						priceValues[3], priceValues[4], priceValues[5]));
 					break;
-				case Event.symbols:
+				case Channel.symbols:
 					onSymbolUpdate(DeserializeResponse<List<SymbolStatus>>(message.Text, "symbols"));
 					break;
-				case Event.ticker:
+				case Channel.ticker:
 					onTicketUpdate(DeserializeResponse<Ticker>(message.Text));
 					break;
-				case Event.trades:
+				case Channel.trades:
 					onTradeUpdate(DeserializeResponse<Trade>(message.Text));
 					break;
 				//Authenticated Channels
-				case Event.trading:
+				case Channel.trading:
 					break;
-				case Event.NewOrderSingle:
+				case Channel.NewOrderSingle:
 					break;
-				case Event.CancelOrderRequest:
+				case Channel.CancelOrderRequest:
 					break;
-				case Event.OrderMassCancelRequest:
+				case Channel.OrderMassCancelRequest:
 					break;
-				case Event.OrderMassStatusRequest:
+				case Channel.OrderMassStatusRequest:
 					break;
-				case Event.balances:
+				case Channel.balances:
+					onBalanceUpdate(DeserializeResponse<List<Balance>>(message.Text, "balances"));
 					break;
-				case Event.auth:
+				case Channel.auth:
 					//Authentication receipt
-					IsAuthenticated = true;
 					break;
 				default:
-					throw new ArgumentException("Invalid event");
+					throw new ArgumentException("Invalid channel" + subscriptionMessage);
 				}
 			}
 		});
@@ -127,26 +126,32 @@ public class BlockchainSocket
 			throw new WebException(error.CloseStatusDescription);
 		});
 		await WebSocket.Start();
-		var subscriptionMessage = new SubscriptionMessage("subscribe", Symbol: arguments.Symbol);
-		if (events.Any(@event => CheckIfEventRequiresAuthentication(@event)))
+		if (events.Any(CheckIfEventRequiresAuthentication))
 		{
-			var authMessage = new[]
+			var authMessage = new
 			{
-				new
-				{
-					token = Configuration.ApiKey["API_SECRET"],
-					action = "subscribe",
-					channel = Event.auth
-				}
+				token = Configuration.ApiKey["API_SECRET"], action = "subscribe", channel = "auth"
 			};
 			await Task.Run(() => WebSocket.Send(JsonConvert.SerializeObject(authMessage)));
 		}
-		foreach (var @event in events)
+		else
 		{
-			if (CheckIfEventRequiresAuthentication(@event) && !IsAuthenticated)
-				continue;
-			subscriptionMessage.Channel = @event;
-			if (@event == Event.prices)
+			await SubscribeToEvents(events, arguments);
+		}
+	}
+
+	private bool CheckIfEventRequiresAuthentication(Channel channel) =>
+		channel is Channel.trading or Channel.NewOrderSingle or Channel.CancelOrderRequest
+			or Channel.OrderMassCancelRequest or Channel.OrderMassStatusRequest or Channel.balances;
+
+	private async Task SubscribeToEvents(List<Channel> channels, Arguments arguments)
+	{
+		foreach (var channel in channels)
+		{
+			var subscriptionMessage =
+				new SubscriptionMessage("subscribe", Symbol: arguments.Symbol);
+			subscriptionMessage.Channel = channel;
+			if (channel == Channel.prices)
 				subscriptionMessage.Granularity = arguments.Granularity.ToString();
 			await Task.Run(() => WebSocket.Send(JsonConvert.SerializeObject(subscriptionMessage)));
 		}

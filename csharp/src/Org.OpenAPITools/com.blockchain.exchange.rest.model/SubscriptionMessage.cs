@@ -9,14 +9,14 @@ namespace Org.OpenAPITools.Client;
 /// <param name="Channel"></param>
 /// <param name="Symbol"></param>
 [JsonObject(ItemNullValueHandling = NullValueHandling.Ignore)]
-public record SubscriptionMessage(string Action = "subscribe", AnonymousEvent Channel = AnonymousEvent.l2,
+public record SubscriptionMessage(string Action = "subscribe", Channel Channel = Channel.l2,
 	string Symbol = null, string Event = null)
 {
 	[JsonProperty("action")]
 	public string Action { get; set; } = Action;
 	[JsonConverter(typeof(StringEnumConverter))]
 	[JsonProperty("channel")]
-	public AnonymousEvent Channel { get; set; } = Channel;
+	public Channel Channel { get; set; } = Channel;
 	[JsonProperty("symbol")]
 	public string Symbol { get; set; } = Symbol;
 	[JsonProperty("event")]

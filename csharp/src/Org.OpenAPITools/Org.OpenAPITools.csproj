@@ -149,7 +149,7 @@ The version of the OpenAPI document: 1.0.0
     <Compile Include="com.blockchain.exchange.rest.model\CreateWithdrawalRequest.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\DepositAddressCrypto.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\DepositInfo.cs" />
-    <Compile Include="com.blockchain.exchange.rest.model\Event.cs" />
+    <Compile Include="com.blockchain.exchange.rest.model\Channel.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\Fees.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderBook.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderBookEntry.cs" />
