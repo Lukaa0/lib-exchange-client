@@ -53,13 +53,13 @@ namespace Org.OpenAPITools.com.blockchain.exchange.rest.model
         public string Symbol { get; set; }
 
         /// <summary>
-        /// Gets or Sets Price24h
+        /// Gets or Sets Price24H
         /// </summary>
         [DataMember(Name="price_24h", EmitDefaultValue=false)]
         public double Price24h { get; set; }
 
         /// <summary>
-        /// Gets or Sets Volume24h
+        /// Gets or Sets Volume24H
         /// </summary>
         [DataMember(Name="volume_24h", EmitDefaultValue=false)]
         public double Volume24h { get; set; }
@@ -79,8 +79,8 @@ namespace Org.OpenAPITools.com.blockchain.exchange.rest.model
             var sb = new StringBuilder();
             sb.Append("class PriceEvent {\n");
             sb.Append("  Symbol: ").Append(Symbol).Append("\n");
-            sb.Append("  Price24h: ").Append(Price24h).Append("\n");
-            sb.Append("  Volume24h: ").Append(Volume24h).Append("\n");
+            sb.Append("  Price24H: ").Append(Price24h).Append("\n");
+            sb.Append("  Volume24H: ").Append(Volume24h).Append("\n");
             sb.Append("  LastTradePrice: ").Append(LastTradePrice).Append("\n");
             sb.Append("}\n");
             return sb.ToString();

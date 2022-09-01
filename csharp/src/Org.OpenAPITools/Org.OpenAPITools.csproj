@@ -33,6 +33,7 @@ The version of the OpenAPI document: 1.0.0
     <WarningLevel>4</WarningLevel>
     <DocumentationFile>bin\Debug\Org.OpenAPITools.xml</DocumentationFile>
     <LangVersion>latest</LangVersion>
+    <NoWarn>1591</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -130,7 +131,7 @@ The version of the OpenAPI document: 1.0.0
     <Compile Include="Client\ApiClient.cs" />
     <Compile Include="Client\ApiException.cs" />
     <Compile Include="Client\ApiResponse.cs" />
-    <Compile Include="Client\Arguments.cs" />
+    <Compile Include="com.blockchain.exchange.rest.model\CreateSingleOrderArguments.cs" />
     <Compile Include="Client\BlockchainSocket.cs" />
     <Compile Include="Client\Configuration.cs" />
     <Compile Include="Client\ExceptionFactory.cs" />
@@ -153,6 +154,7 @@ The version of the OpenAPI document: 1.0.0
     <Compile Include="com.blockchain.exchange.rest.model\Fees.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderBook.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderBookEntry.cs" />
+    <Compile Include="com.blockchain.exchange.rest.model\OrderSummaryList.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderStatus.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrderSummary.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\OrdType.cs" />

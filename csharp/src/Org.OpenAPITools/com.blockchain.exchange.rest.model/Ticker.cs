@@ -13,9 +13,9 @@ public sealed record Ticker
 	[JsonProperty("symbol")]
 	public string Symbol { get; set; }
 	[JsonProperty("price_24h")]
-	public double Price24h { get; set; }
+	public double Price24H { get; set; }
 	[JsonProperty("volume_24h")]
-	public double Volume24h { get; set; }
+	public double Volume24H { get; set; }
 	[JsonProperty("last_trade_price")]
 	public double LastTradePrice { get; set; }
 }

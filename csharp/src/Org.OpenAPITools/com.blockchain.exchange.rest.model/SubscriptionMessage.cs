@@ -3,24 +3,28 @@ using Newtonsoft.Json.Converters;
 
 namespace Org.OpenAPITools.Client;
 
-/// <summary>
-/// </summary>
-/// <param name="Action"></param>
-/// <param name="Channel"></param>
-/// <param name="Symbol"></param>
 [JsonObject(ItemNullValueHandling = NullValueHandling.Ignore)]
-public record SubscriptionMessage(string Action = "subscribe", Channel Channel = Channel.l2,
-	string Symbol = null, string Event = null)
+public class SubscriptionMessage
 {
+	/// <summary>
+	///   A model for sending/receiving subscription requests
+	/// </summary>
+	/// <param name="action">Can be either subscribe or unsubscribe</param>
+	/// <param name="channel">Name of the channel</param>
+	public SubscriptionMessage(string action, Channel channel)
+	{
+		Action = action;
+		Channel = channel;
+	}
+
+	public SubscriptionMessage() { }
 	[JsonProperty("action")]
-	public string Action { get; set; } = Action;
+	public string Action { get; set; }
 	[JsonConverter(typeof(StringEnumConverter))]
 	[JsonProperty("channel")]
-	public Channel Channel { get; set; } = Channel;
-	[JsonProperty("symbol")]
-	public string Symbol { get; set; } = Symbol;
+	public Channel Channel { get; set; }
 	[JsonProperty("event")]
-	public string Event { get; set; } = Event;
-	[JsonProperty("granularity")]
-	public string Granularity { get; set; } = Event;
+	public string Event { get; set; }
+	[JsonProperty("text")]
+	public string Text { get; set; }
 }
