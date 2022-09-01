@@ -40,6 +40,6 @@ await client.SubscribeToTradesAsync("BTC-USDT", message =>
 });
 await client.SubscribeToPricesAsync("BTC-USDT", 60, message =>
 {
-	var trades = message;
+	var prices = message;
 });
 Console.ReadKey();
