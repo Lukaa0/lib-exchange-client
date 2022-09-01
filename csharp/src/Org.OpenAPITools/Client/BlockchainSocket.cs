@@ -12,13 +12,8 @@ using Websocket.Client;
 
 namespace Org.OpenAPITools.Client;
 
-public class BlockchainSocket
+public sealed class BlockchainSocket
 {
-	public List<Channel> SubscribedEvents;
-
-	/// <summary>
-	/// </summary>
-	/// <param name="configuration"></param>
 	public BlockchainSocket(Configuration configuration)
 	{
 		Configuration = configuration;
@@ -35,6 +30,70 @@ public class BlockchainSocket
 	private Configuration Configuration { get; }
 	private Func<ClientWebSocket> Factory { get; }
 	private WebsocketClient WebSocket { get; }
+
+	public async Task SubscribeToPricesAsync(string symbol, int granularity,
+		Action<Price> onMessageReceived)
+	{
+		using var websocket = new WebsocketClient(new Uri(Configuration.WebSocketUrl), Factory);
+		websocket.MessageReceived.Subscribe(message =>
+		{
+			PriceUpdateCallback(onMessageReceived, message);
+		});
+		await SendToPrices(new Arguments(symbol, granularity),
+			Enum.GetName(typeof(Channel), Channel.prices), websocket);
+	}
+
+	public async Task SubscribeToL2OrderBookAsync(string symbol,
+		Action<List<Bids>> onMessageReceived) =>
+		await SubscribeToAnonymousChannel(symbol, Channel.l2, onMessageReceived, "bids");
+
+	public async Task SubscribeToL3OrderBookAsync(string symbol,
+		Action<List<Bids>> onMessageReceived) =>
+		await SubscribeToAnonymousChannel(symbol, Channel.l3, onMessageReceived, "bids");
+
+	public async Task SubscribeToSymbolsAsync(string symbol,
+		Action<SymbolStatus> onMessageReceived) =>
+		await SubscribeToAnonymousChannel(symbol, Channel.symbols, onMessageReceived, "symbols");
+
+	public async Task SubscribeToTickerAsync(string symbol,
+		Action<PriceEvent> onMessageReceived) =>
+		await SubscribeToAnonymousChannel(symbol, Channel.ticker, onMessageReceived);
+
+	public async Task SubscribeToTradesAsync(string symbol, Action<Trade> onMessageReceived) =>
+		await SubscribeToAnonymousChannel(symbol, Channel.trades, onMessageReceived);
+
+	private async Task SubscribeToAnonymousChannel<T>(string symbol, Channel channel,
+		Action<T> onMessageReceived, string property = null)
+	{
+		var websocket = new WebsocketClient(new Uri(Configuration.WebSocketUrl), Factory);
+		websocket.MessageReceived.Subscribe(message =>
+		{
+			var subscriptionMessage =
+				JsonConvert.DeserializeObject<SubscriptionMessage>(message.Text);
+			if (subscriptionMessage.Event == "subscribed")
+			{
+				//receipt
+				return;
+			}
+			if (subscriptionMessage.Event == "rejected")
+			{
+				throw new Exception("Connection rejected: " + subscriptionMessage.Text +
+					" Channel: " + subscriptionMessage.Channel);
+			}
+			onMessageReceived(DeserializeResponse<T>(message.Text, property));
+		});
+		websocket.DisconnectionHappened.Subscribe(error =>
+		{
+			if (error?.Exception != null)
+				throw new Exception($"{error.Exception.Message} At channel: {channel}",
+					error.Exception);
+			throw new WebException($"{error.CloseStatusDescription} At channel: {channel}");
+		});
+		await websocket.Start();
+		var arguments = new Arguments(symbol);
+		arguments.SetCommand("subscribe", channel);
+		await SendMessageToChannelAsync(arguments, websocket);
+	}
 
 	// ReSharper disable once TooManyArguments
 	// ReSharper disable once MethodTooLong
@@ -69,7 +128,7 @@ public class BlockchainSocket
 			if (subscriptionMessage.Channel == Channel.auth &&
 				subscriptionMessage.Event != "rejected")
 			{
-				await SubscribeToChannelsAsync(channels, arguments);
+				await SubscribeToChannelsAsync(channels, arguments, WebSocket);
 			}
 			else if (subscriptionMessage.Event == "subscribed")
 			{
@@ -77,7 +136,8 @@ public class BlockchainSocket
 			}
 			else if (subscriptionMessage.Event == "rejected")
 			{
-				throw new AuthenticationException("Connection rejected: " + subscriptionMessage.Text);
+				throw new Exception("Connection rejected: " + subscriptionMessage.Text +
+					" Channel: " + subscriptionMessage.Channel);
 			}
 			else
 			{
@@ -90,10 +150,7 @@ public class BlockchainSocket
 					onL3Message(DeserializeResponse<List<Bids>>(message.Text, "bids"));
 					break;
 				case Channel.prices:
-					var priceValues = JObject.Parse(message.Text)["price"].
-						Select(token => (double)token).ToArray();
-					onPriceUpdate(new Price(priceValues[0], priceValues[1], priceValues[2],
-						priceValues[3], priceValues[4], priceValues[5]));
+					PriceUpdateCallback(onPriceUpdate, message);
 					break;
 				case Channel.symbols:
 					onSymbolUpdate(DeserializeResponse<List<SymbolStatus>>(message.Text, "symbols"));
@@ -137,72 +194,93 @@ public class BlockchainSocket
 		});
 		await WebSocket.Start();
 		if (channels.Any(CheckIfEventRequiresAuthentication))
-		{
-			var authMessage = new
-			{
-				token = Configuration.ApiKey["API_SECRET"], action = "subscribe", channel = "auth"
-			};
-			await Task.Run(() => WebSocket.Send(JsonConvert.SerializeObject(authMessage)));
-		}
+			await AuthenticateAsync();
 		else
+			await SubscribeToChannelsAsync(channels, arguments, WebSocket);
+	}
+
+	private static void PriceUpdateCallback(Action<Price> onPriceUpdate,
+		ResponseMessage message)
+	{
+		var priceValues = JObject.Parse(message.Text)["price"].Select(token => (double)token).
+			ToArray();
+		onPriceUpdate(new Price(priceValues[0], priceValues[1], priceValues[2], priceValues[3],
+			priceValues[4], priceValues[5]));
+	}
+
+	private async Task AuthenticateAsync()
+	{
+		var authMessage = new
 		{
-			await SubscribeToChannelsAsync(channels, arguments);
-		}
+			token = Configuration.ApiKey["API_SECRET"], action = "subscribe", channel = "auth"
+		};
+		await Task.Run(() => WebSocket.Send(JsonConvert.SerializeObject(authMessage)));
 	}
 
 	private bool CheckIfEventRequiresAuthentication(Channel channel) =>
 		channel is Channel.trading or Channel.NewOrderSingle or Channel.CancelOrderRequest
 			or Channel.OrderMassCancelRequest or Channel.OrderMassStatusRequest or Channel.balances;
 
-	private async Task SubscribeToChannelsAsync(List<Channel> channels, Arguments arguments)
+	private async Task SubscribeToChannelsAsync(List<Channel> channels, Arguments arguments,
+		WebsocketClient websocket)
 	{
 		foreach (var channel in channels)
-			await SendMessageToChannelAsync(arguments, channel);
+		{
+			arguments.SetCommand("subscribe", channel);
+			await SendMessageToChannelAsync(arguments, websocket);
+		}
 	}
 
-	private async Task SendMessageToChannelAsync(Arguments arguments, Channel channel)
+	private async Task SendMessageToChannelAsync(Arguments arguments, WebsocketClient websocket)
 	{
 		var channelName = Enum.GetName(typeof(Channel), arguments.Channel);
-		arguments.SetCommand("subscribe", channel);
-		switch (channel)
+		switch (arguments.Channel)
 		{
 		case Channel.prices:
 		{
-			await Task.Run(() => WebSocket?.Send(JsonConvert.SerializeObject(new
-			{
-				channel = channelName,
-				action = arguments.Action,
-				symbol = arguments.Symbol,
-				granularity = arguments.Granularity
-			})));
+			await SendToPrices(arguments, channelName, WebSocket);
 			break;
 		}
 		case Channel.NewOrderSingle:
 		{
-			var requestParameters = new
-			{
-				channel = channelName,
-				action = arguments.Action,
-				clOrdID = arguments.ClOrdId,
-				symbol = arguments.Symbol,
-				ordType = arguments.OrdType,
-				timeInForce = arguments.TimeInForce,
-				side = arguments.Side,
-				orderQty = arguments.OrderQty,
-				price = arguments.Price
-			};
-			await Task.Run(() => WebSocket?.Send(JsonConvert.SerializeObject(requestParameters)));
+			await SubscribeToNewOrderSingle(arguments, channelName, websocket);
 			break;
 		}
 		//Channels that only require symbol as an argument
 		default:
-			await Task.Run(() => WebSocket?.Send(JsonConvert.SerializeObject(new
+			await Task.Run(() => websocket?.Send(JsonConvert.SerializeObject(new
 			{
 				channel = channelName, action = arguments.Action, symbol = arguments.Symbol
 			})));
 			break;
 		}
 	}
+
+	private async Task
+		SubscribeToNewOrderSingle(Arguments arguments, string channelName,
+			WebsocketClient websocket) =>
+		await Task.Run(() => websocket?.Send(JsonConvert.SerializeObject(new
+		{
+			channel = channelName,
+			action = arguments.Action,
+			clOrdID = arguments.ClOrdId,
+			symbol = arguments.Symbol,
+			ordType = arguments.OrdType,
+			timeInForce = arguments.TimeInForce,
+			side = arguments.Side,
+			orderQty = arguments.OrderQty,
+			price = arguments.Price
+		})));
+
+	private async Task SendToPrices(Arguments arguments, string channelName,
+		WebsocketClient websocket) =>
+		await Task.Run(() => websocket?.Send(JsonConvert.SerializeObject(new
+		{
+			channel = channelName,
+			action = arguments.Action,
+			symbol = arguments.Symbol,
+			granularity = arguments.Granularity
+		})));
 
 	private T DeserializeResponse<T>(string json, string propertyName = null) =>
 		JsonConvert.DeserializeObject<T>(propertyName == null

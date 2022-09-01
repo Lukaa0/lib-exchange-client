@@ -164,7 +164,6 @@ The version of the OpenAPI document: 1.0.0
     <Compile Include="com.blockchain.exchange.rest.model\Side.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\SubscriptionMessage.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\SymbolStatus.cs" />
-    <Compile Include="com.blockchain.exchange.rest.model\Ticker.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\TimeInForce.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\TimeInForceStop.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\Trade.cs" />
@@ -174,7 +173,6 @@ The version of the OpenAPI document: 1.0.0
     <Compile Include="com.blockchain.exchange.rest.model\WithdrawalStatus.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\Price.cs" />
-    <Compile Include="com.blockchain.exchange.rest.model\Ticker.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\Trade.cs" />
     <Compile Include="com.blockchain.exchange.rest.model\Bids.cs" />
     <Compile Include="Client\BlockchainSocket.cs" />
