@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
-using System.Security.Authentication;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -47,6 +46,13 @@ public sealed class BlockchainSocket
 		Action<List<Bids>> onMessageReceived) =>
 		await SubscribeToAnonymousChannel(symbol, Channel.l2, onMessageReceived, "bids");
 
+	public async Task
+		SubscribeToCreateOrderChannel(Order order, Action<List<Bids>> onMessageReceived) =>
+		await SubscribeToAuthenticatedChannel(
+			new Arguments(order.Symbol, clOrdId: order.ClOrdID, ordType: order.OrdType,
+				side: order.Side, orderQty: order.OrderQty, timeInForce: order.TimeInForce,
+				price: order.Price), Channel.l2, onMessageReceived);
+
 	public async Task SubscribeToL3OrderBookAsync(string symbol,
 		Action<List<Bids>> onMessageReceived) =>
 		await SubscribeToAnonymousChannel(symbol, Channel.l3, onMessageReceived, "bids");
@@ -71,15 +77,11 @@ public sealed class BlockchainSocket
 			var subscriptionMessage =
 				JsonConvert.DeserializeObject<SubscriptionMessage>(message.Text);
 			if (subscriptionMessage.Event == "subscribed")
-			{
 				//receipt
 				return;
-			}
 			if (subscriptionMessage.Event == "rejected")
-			{
 				throw new Exception("Connection rejected: " + subscriptionMessage.Text +
 					" Channel: " + subscriptionMessage.Channel);
-			}
 			onMessageReceived(DeserializeResponse<T>(message.Text, property));
 		});
 		websocket.DisconnectionHappened.Subscribe(error =>
@@ -93,6 +95,47 @@ public sealed class BlockchainSocket
 		var arguments = new Arguments(symbol);
 		arguments.SetCommand("subscribe", channel);
 		await SendMessageToChannelAsync(arguments, websocket);
+	}
+
+	private async Task SubscribeToAuthenticatedChannel<T>(Arguments arguments, Channel channel,
+		Action<T> onMessageReceived)
+	{
+		var websocket = new WebsocketClient(new Uri(Configuration.WebSocketUrl), Factory);
+
+		async void OnAuthenticate(ResponseMessage message)
+		{
+			var subscriptionMessage =
+				JsonConvert.DeserializeObject<SubscriptionMessage>(message.Text);
+			if (subscriptionMessage.Channel == Channel.auth &&
+				subscriptionMessage.Event != "rejected")
+			{
+				arguments.SetCommand("subscribe", channel);
+				await SendMessageToChannelAsync(arguments, websocket);
+			}
+			else if (subscriptionMessage.Event == "subscribed")
+				//receipt
+			{ }
+			else if (subscriptionMessage.Event == "rejected")
+			{
+				throw new Exception("Connection rejected: " + subscriptionMessage.Text +
+					" Channel: " + subscriptionMessage.Channel);
+			}
+			else
+			{
+				onMessageReceived(DeserializeResponse<T>(message.Text));
+			}
+		}
+
+		websocket.MessageReceived.Subscribe(OnAuthenticate);
+		websocket.DisconnectionHappened.Subscribe(error =>
+		{
+			if (error?.Exception != null)
+				throw new Exception($"{error.Exception.Message} At channel: {channel}",
+					error.Exception);
+			throw new WebException($"{error.CloseStatusDescription} At channel: {channel}");
+		});
+		await websocket.Start();
+		await AuthenticateAsync(websocket);
 	}
 
 	// ReSharper disable once TooManyArguments
@@ -118,8 +161,8 @@ public sealed class BlockchainSocket
 		Action<List<Bids>> onL2Message = null, Action<List<Bids>> onL3Message = null,
 		Action<Price> onPriceUpdate = null, Action<List<SymbolStatus>> onSymbolUpdate = null,
 		Action<PriceEvent> onTickerUpdate = null, Action<Trade> onTradesUpdate = null,
-		Action<List<Balance>> onBalanceUpdate = null,
-		Action<OrderSummaryResponse> onTradingUpdate = null)
+		Action<List<Balance>> onBalanceUpdate = null, Action<OrderList> onTradingUpdate = null,
+		Action<OrderList> onCreateOrder = null)
 	{
 		async void OnMessageReceived(ResponseMessage message)
 		{
@@ -132,7 +175,7 @@ public sealed class BlockchainSocket
 			}
 			else if (subscriptionMessage.Event == "subscribed")
 			{
-				//receipt
+				//receipt 
 			}
 			else if (subscriptionMessage.Event == "rejected")
 			{
@@ -163,9 +206,10 @@ public sealed class BlockchainSocket
 					break;
 				//Authenticated Channels
 				case Channel.trading:
-					onTradingUpdate(DeserializeResponse<OrderSummaryResponse>(message.Text));
+					onTradingUpdate(DeserializeResponse<OrderList>(message.Text));
 					break;
 				case Channel.NewOrderSingle:
+					onCreateOrder(DeserializeResponse<OrderList>(message.Text));
 					break;
 				case Channel.CancelOrderRequest:
 					break;
@@ -194,7 +238,7 @@ public sealed class BlockchainSocket
 		});
 		await WebSocket.Start();
 		if (channels.Any(CheckIfEventRequiresAuthentication))
-			await AuthenticateAsync();
+			await AuthenticateAsync(WebSocket);
 		else
 			await SubscribeToChannelsAsync(channels, arguments, WebSocket);
 	}
@@ -208,13 +252,13 @@ public sealed class BlockchainSocket
 			priceValues[4], priceValues[5]));
 	}
 
-	private async Task AuthenticateAsync()
+	private async Task AuthenticateAsync(WebsocketClient websocket)
 	{
 		var authMessage = new
 		{
 			token = Configuration.ApiKey["API_SECRET"], action = "subscribe", channel = "auth"
 		};
-		await Task.Run(() => WebSocket.Send(JsonConvert.SerializeObject(authMessage)));
+		await Task.Run(() => websocket.Send(JsonConvert.SerializeObject(authMessage)));
 	}
 
 	private bool CheckIfEventRequiresAuthentication(Channel channel) =>
